@@ -43,7 +43,7 @@ def sw():
 
 @app.route("/login", methods=["GET","POST"])
 def login():
-    if request.method == "POST":
+    if request.method == "5d":
         if request.form.get("senha") == "5d":
             session["logado"] = True
             return redirect("/")
