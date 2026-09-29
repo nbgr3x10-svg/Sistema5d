@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lojão da Sofi</title>
+<!-- Google Analytics - troque G-XXXX por seu ID depois -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LOJAODASOFI"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LOJAODASOFI');</script>
+<script defer src="https://va.vercel-scripts.com/v1/script.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui}
+body{background:#fffafc}header{background:#ff1f6b;color:#fff;padding:12px 16px;position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;z-index:10}
+.logo{font-weight:900}.cart{background:#fff;color:#ff1f6b;padding:8px 14px;border-radius:999px;font-weight:700;cursor:pointer}
+.products{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+.card{border:1px solid #ffe0eb;border-radius:16px;overflow:hidden;background:#fff}
+.card img{width:100%;aspect-ratio:1;object-fit:cover;background:#fff}
+.card.info{padding:10px}.btn{background:#ff1f6b;color:#fff;border:0;padding:12px;border-radius:10px;width:100%;font-weight:700;cursor:pointer}
+#checkout{position:fixed;inset:0;background:#fff;z-index:20;overflow:auto;display:none}
+#checkout.active{display:block}.step{display:flex;gap:8px;margin:16px}.step div{flex:1;height:4px;background:#ffd6e4;border-radius:99px}.step div.on{background:#ff1f6b}
+.form{padding:16px;max-width:520px;margin:0 auto}.input{width:100%;padding:12px;border:1px solid #ffb3cc;border-radius:10px;margin-bottom:10px}.row{display:flex;gap:10px}
+.paybox{border:2px solid #ffd6e4;border-radius:12px;padding:12px;margin-bottom:12px;cursor:pointer}.paybox.sel{border-color:#ff1f6b;background:#fff5f8}
+.whats-float{position:fixed;bottom:16px;right:16px;background:#25d366;color:#fff;padding:12px 16px;border-radius:999px;font-weight:800;text-decoration:none;z-index:15}
+</style>
+</head>
+<body>
+<header><div class="logo">LOJÃO DA SOFI</div><div class="cart" onclick="openCart()">🛒 <span id="cartCount">0</span></div></header>
+<div class="products" id="products"></div>
+<a class="whats-float" href="https://wa.me/5518996741295?text=Ol%C3%A1%20preciso%20de%20suporte" target="_blank">💬 Suporte</a>
+<div id="checkout">
+<div style="padding:12px;display:flex;justify-content:space-between"><b>Checkout seguro</b><button onclick="closeCart()" style="border:0;background:#eee;padding:6px 12px;border-radius:99px">X</button></div>
+<div class="step"><div class="on" id="s1"></div><div id="s2"></div><div id="s3"></div></div>
+<div class="form" id="step1"><h2>1. Seus dados</h2>
+<input class="input" id="nome" placeholder="Nome completo">
+<input class="input" id="cpf" placeholder="CPF 000.000.000-00" maxlength="14">
+<input class="input" id="tel" placeholder="WhatsApp (11) 90000-0000">
+<input class="input" id="email" placeholder="E-mail">
+<button class="btn" onclick="goStep(2);gtag('event','view_address')">Continuar para endereço</button></div>
+<div class="form" id="step2" style="display:none"><h2>2. Endereço</h2>
+<div class="row"><input class="input" id="cep" placeholder="CEP 00000-000" maxlength="9"><button class="btn" style="width:120px" onclick="buscarCEP()">Buscar</button></div>
+<input class="input" id="rua" placeholder="Rua"><div class="row"><input class="input" id="numero" placeholder="Número"><input class="input" id="bairro" placeholder="Bairro"></div>
+<div class="row"><input class="input" id="cidade" placeholder="Cidade"><input class="input" id="uf" placeholder="UF" maxlength="2"></div>
+<input class="input" id="comp" placeholder="Complemento">
+<button class="btn" onclick="goStep(3);gtag('event','view_payment')">Continuar para pagamento</button></div>
+<div class="form" id="step3" style="display:none"><h2>3. Pagamento</h2>
+<div class="paybox sel" id="payPix" onclick="selPay('pix')">
+<b>⚡ PIX - Aprovação imediata</b>
+<div id="pixcode" style="margin-top:8px;background:#f6f6f6;padding:10px;border-radius:8px;word-break:break-all;font-size:13px;font-weight:700">42739eb5-c439-4fd6-b4eb-cf6e3123dc7d</div>
+<button class="btn" style="margin-top:10px" onclick="copiarPix(event)">📋 Copiar chave PIX</button>
+</div>
+<div class="paybox" id="payCard" onclick="selPay('card')">
+<b>💳 Cartão de crédito / débito</b><br><small>Parcele em até 12x - Aprovação na hora</small>
+<div id="cardFields" style="display:none;margin-top:10px">
+<input class="input" placeholder="Número do cartão">
+<div class="row"><input class="input" placeholder="MM/AA"><input class="input" placeholder="CVV"></div>
+<input class="input" placeholder="Nome impresso no cartão">
+<select class="input"><option>1x sem juros</option><option>2x sem juros</option><option>3x sem juros</option><option>6x sem juros</option><option>12x com juros</option></select>
+</div>
+</div>
+<div class="paybox" id="payBoleto" onclick="selPay('boleto')">
+<b>📄 Boleto bancário</b><br><small>Vencimento em 2 dias úteis</small>
+<div id="boletoFields" style="display:none;margin-top:10px;background:#f6f6f6;padding:8px;border-radius:8px;font-size:13px">O boleto será gerado após finalizar e enviado para seu e-mail.</div>
+</div>
+<div id="resumo"></div><button class="btn" style="background:#111;margin-top:12px" onclick="finalizar()">Finalizar pedido ✅</button></div>
+</div>
+<script>
+const prods=[
+{name:"Air Fryer 4.2L",price:299.90,img:"./airfryer.jpg"},
+{name:"Liquidificador Turbo",price:129.90,img:"./liquidificador.jpg"},
+{name:"TV Box 4K",price:149.90,img:"./tvbox.jpg"},
+{name:"Ventilador 40cm",price:159.90,img:"./ventilador.jpg"}
+]
+let cart=[];let pay='pix';
+function render(){document.getElementById('products').innerHTML=prods.map((p,i)=>`<div class="card"><img src="${p.img}"><div class="info"><div style="font-size:14px">${p.name}</div><b>R$ ${p.price.toFixed(2)}</b><button class="btn" style="margin-top:8px" onclick="add(${i})">Adicionar</button></div></div>`).join('')}
+function add(i){gtag('event','add_to_cart',{item:prods[i].name});cart.push(prods[i]);document.getElementById('cartCount').innerText=cart.length;openCart()}
+function openCart(){document.getElementById('checkout').classList.add('active');goStep(1);updateResumo()}
+function closeCart(){document.getElementById('checkout').classList.remove('active')}
+function goStep(n){
+if(n==2&&!document.getElementById('nome').value){alert('Preencha seu nome');return}
+if(n==3&&!document.getElementById('cep').value){alert('Preencha CEP');return}
+document.getElementById('step1').style.display=n==1?'block':'none';document.getElementById('step2').style.display=n==2?'block':'none';document.getElementById('step3').style.display=n==3?'block':'none';
+document.getElementById('s1').className=n>=1?'on':'';document.getElementById('s2').className=n>=2?'on':'';document.getElementById('s3').className=n>=3?'on':'';
+}
+function updateResumo(){let t=cart.reduce((s,p)=>s+p.price,0);document.getElementById('resumo').innerHTML=`<div class="paybox" style="cursor:default">Itens: ${cart.length}<br>Total: <b>R$ ${t.toFixed(2)}</b><br>Pagamento: <b id="payTxt">PIX</b></div>`}
+function selPay(t){pay=t;gtag('event','select_payment',{method:t});document.getElementById('payPix').classList.toggle('sel',t=='pix');document.getElementById('payCard').classList.toggle('sel',t=='card');document.getElementById('payBoleto').classList.toggle('sel',t=='boleto');document.getElementById('cardFields').style.display=t=='card'?'block':'none';document.getElementById('boletoFields').style.display=t=='boleto'?'block':'none';document.getElementById('payTxt').innerText=t=='pix'?'PIX':t=='card'?'Cartão':'Boleto';}
+function copiarPix(e){e.stopPropagation();gtag('event','copy_pix');navigator.clipboard.writeText(document.getElementById('pixcode').innerText);alert('Chave PIX copiada: 42739eb5-c439-4fd6-b4eb-cf6e3123dc7d')}
+function buscarCEP(){let c=document.getElementById('cep').value.replace(/\D/g,'');if(c.length!=8){alert('CEP inválido');return}fetch(`https://viacep.com.br/ws/${c}/json/`).then(r=>r.json()).then(d=>{if(d.erro){alert('CEP não encontrado');return}document.getElementById('rua').value=d.logradouro;document.getElementById('bairro').value=d.bairro;document.getElementById('cidade').value=d.localidade;document.getElementById('uf').value=d.uf})}
+function finalizar(){let nome=document.getElementById('nome').value;let t=cart.reduce((s,p)=>s+p.price,0);gtag('event','purchase',{value:t});let msg=`NOVO PEDIDO LOJÃO DA SOFI%0ACliente: ${nome}%0APagamento: ${pay.toUpperCase()}%0ATotal: R$ ${t.toFixed(2)}%0APIX: 42739eb5-c439-4fd6-b4eb-cf6e3123dc7d`;window.open(`https://wa.me/5518996741295?text=${msg}`,'_blank')}
+document.getElementById('cpf').addEventListener('input',e=>{let v=e.target.value.replace(/\D/g,'').slice(0,11);v=v.replace(/(\d{3})(\d)/,'$1.$2');v=v.replace(/(\d{3})(\d)/,'$1.$2');v=v.replace(/(\d{3})(\d{1,2})$/,'$1-$2');e.target.value=v})
+document.getElementById('cep').addEventListener('input',e=>{let v=e.target.value.replace(/\D/g,'').slice(0,8);v=v.replace(/(\d{5})(\d)/,'$1-$2');e.target.value=v})
+render()
+</script>
+</body>
+</html>
