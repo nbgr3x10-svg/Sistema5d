@@ -1,135 +1,148 @@
-from flask import Flask, request, redirect, session, jsonify, Response
-import os, csv
+from flask import Flask, render_template_string, request, redirect, session, jsonify
+import os, json
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "5d-secret-pro-max"
+app.secret_key = '5d-pro-max-2026'
+USER="admin"
+PASS="5d"
 
-ARQ = "nomes.txt"
-if os.path.exists(ARQ):
-    with open(ARQ, "r") as f:
-        nomes = f.read().splitlines()
-else:
-    nomes = ["Nbgrrec3x10", "hariel", "atalia"]
+DATA_FILE="data.json"
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE,'r') as f: return json.load(f)
+    return {"produtos":[
+        {"id":1,"nome":"Airfryer","estoque":12,"compra":200,"venda":350},
+        {"id":2,"nome":"TvBox","estoque":20,"compra":80,"venda":150},
+        {"id":3,"nome":"Cafeteira","estoque":8,"compra":90,"venda":189},
+        {"id":4,"nome":"Forno Elétrico","estoque":5,"compra":300,"venda":499}
+    ],"vendas":[]}
+def save_data(d):
+    with open(DATA_FILE,'w') as f: json.dump(d,f)
 
-buscas = 0
+BASE_CSS = "https://cdn.tailwindcss.com"
+# --- HTMLS ---
+DASH_HTML = """
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script><link rel="manifest" href="/manifest.json"><title>5D PRO</title></head>
+<body class="bg-black text-white">
+<div class="max-w-7xl mx-auto p-4">
+<div class="flex justify-between items-center py-4"><h1 class="text-2xl font-black">5D <span class="text-violet-500">PRO MAX</span></h1>
+<div class="flex gap-2"><a href="/loja" target="_blank" class="bg-white text-black px-4 py-2 rounded-full font-bold">Ver Loja</a><a href="/logout" class="bg-zinc-800 px-4 py-2 rounded-full">Sair</a></div></div>
 
-def salvar():
-    with open(ARQ, "w") as f:
-        for n in nomes:
-            f.write(n + "\n")
+<div class="grid grid-cols-3 gap-3 mb-6">
+<div class="bg-zinc-900 p-4 rounded-2xl"><p class="text-zinc-500 text-xs">FATURAMENTO</p><h2 class="text-2xl font-bold">R$ {{faturamento}}</h2></div>
+<div class="bg-zinc-900 p-4 rounded-2xl"><p class="text-zinc-500 text-xs">LUCRO</p><h2 class="text-2xl font-bold text-green-400">R$ {{lucro}}</h2></div>
+<div class="bg-zinc-900 p-4 rounded-2xl"><p class="text-zinc-500 text-xs">VENDAS</p><h2 class="text-2xl font-bold">{{total_vendas}}</h2></div>
+</div>
 
-@app.route("/manifest.json")
-def manifest():
-    return jsonify({
-        "name": "Sistema 5D PRO",
-        "short_name": "5D PRO",
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#000000",
-        "theme_color": "#00ff88",
-        "icons": [
-            {"src": "https://cdn-icons-png.flaticon.com/512/2103/2103633.png", "sizes": "512x512", "type": "image/png"}
-        ]
-    })
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+{% for p in produtos %}
+<div class="bg-zinc-900 border border-zinc-800 p-4 rounded-[24px]">
+<h3 class="font-bold text-lg">{{p.nome}}</h3>
+<p class="text-xs text-zinc-500">Estoque: {{p.estoque}} | Lucro: R$ {{p.venda-p.compra}}</p>
+<p class="text-xl font-bold mt-2">R$ {{p.venda}}</p>
+<div class="flex gap-2 mt-3">
+<form method="POST" action="/vender/{{p.id}}" class="flex-1"><button class="w-full bg-violet-600 py-2.5 rounded-xl font-bold">VENDER</button></form>
+<form method="POST" action="/del/{{p.id}}"><button class="bg-zinc-800 px-3 py-2.5 rounded-xl">X</button></form>
+</div>
+</div>
+{% endfor %}
+</div>
 
-@app.route("/sw.js")
-def sw():
-    js = """
-    self.addEventListener('install', e => self.skipWaiting());
-    self.addEventListener('activate', e => self.clients.claim());
-    """
-    return Response(js, mimetype='application/javascript')
+<form method="POST" action="/add" class="mt-8 bg-zinc-900 p-4 rounded-2xl grid grid-cols-2 md:grid-cols-5 gap-2">
+<input name="nome" placeholder="Produto" required class="bg-black border border-zinc-800 p-3 rounded-xl col-span-2">
+<input name="compra" type="number" placeholder="Compra" required class="bg-black border border-zinc-800 p-3 rounded-xl">
+<input name="venda" type="number" placeholder="Venda" required class="bg-black border border-zinc-800 p-3 rounded-xl">
+<button class="bg-white text-black font-bold rounded-xl">+ Add</button>
+</form>
 
-@app.route("/login", methods=["GET","POST"])
+<div class="mt-8"><h3 class="font-bold mb-2">Últimas Vendas</h3>{% for v in vendas[::-1][:10] %}<div class="text-sm text-zinc-400 flex justify-between border-b border-zinc-900 py-2"><span>{{v.data}} - {{v.produto}}</span><span class="text-green-400">+R$ {{v.lucro}}</span></div>{% endfor %}</div>
+</div></body></html>
+"""
+
+LOJA_HTML = """
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script><title>Loja 5D</title></head>
+<body class="bg-zinc-50">
+<div class="max-w-6xl mx-auto p-6"><h1 class="text-4xl font-black mb-2">LOJA <span class="text-violet-600">5D</span></h1><p class="text-zinc-500 mb-8">Entrega para todo Brasil</p>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+{% for p in produtos %}{% if p.estoque>0 %}
+<div class="bg-white p-4 rounded-[24px] shadow-sm"><div class="bg-zinc-100 h-32 rounded-2xl mb-3 flex items-center justify-center text-3xl">📦</div>
+<h3 class="font-bold">{{p.nome}}</h3><p class="text-violet-600 font-black text-xl">R$ {{p.venda}}</p><p class="text-xs text-zinc-400">12x no cartão</p>
+<a href="https://wa.me/55SEUNUMERO?text=Quero {{p.nome}}" class="block text-center mt-3 bg-black text-white py-2.5 rounded-xl font-bold">Comprar no Zap</a>
+</div>{% endif %}{% endfor %}
+</div></div></body></html>
+"""
+
+LOGIN_HTML="""<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-black flex items-center justify-center h-screen">
+<form method="POST" class="bg-zinc-900 p-8 rounded-[24px] w-80 border border-zinc-800">
+<h2 class="text-white text-2xl font-black mb-6 text-center">5D PRO</h2>
+<input name="user" placeholder="Usuário" class="w-full bg-black border border-zinc-800 text-white p-3 rounded-xl mb-3">
+<input name="pass" type="password" placeholder="Senha" class="w-full bg-black border border-zinc-800 text-white p-3 rounded-xl mb-4">
+<button class="w-full bg-violet-600 py-3 rounded-xl text-white font-bold">ENTRAR</button>
+{% if erro %}<p class="text-red-400 text-sm mt-3 text-center">{{ erro }}</p>{% endif %}
+</form></body></html>"""
+
+@app.route('/login',methods=['GET','POST'])
 def login():
-    if request.method == "5d":
-        if request.form.get("senha") == "5d":
-            session["logado"] = True
-            return redirect("/")
-    return """
-    <head>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#00ff88">
-    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png">
-    </head>
-    <body style="background:#000;color:#0f0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:monospace">
-    <form method="post" style="border:1px solid #0f0;padding:30px;text-align:center;border-radius:10px">
-        <h2>⚡ SISTEMA 5D PRO</h2><p>Senha: 5d</p>
-        <input name="senha" type="password" placeholder="Senha" style="padding:12px;width:80%"><br><br>
-        <button style="padding:12px 30px;background:#0f0;color:#000;font-weight:bold;border:none;border-radius:5px">ENTRAR</button>
-    </form>
-    <script>navigator.serviceWorker&&navigator.serviceWorker.register('/sw.js')</script>
-    </body>
-    """
+    erro=None
+    if request.method=='POST':
+        if request.form.get('user')==USER and request.form.get('pass')==PASS:
+            session['logado']=True
+            return redirect('/')
+        erro="Errado"
+    return render_template_string(LOGIN_HTML,erro=erro)
+@app.route('/logout')
+def logout():
+    session.clear(); return redirect('/login')
+@app.before_request
+def chk():
+    if request.path not in ['/login','/loja','/manifest.json'] and not request.path.startswith('/static'):
+        if not session.get('logado') and not request.path.startswith('/loja'):
+            if request.path not in ['/login']:
+                if '/loja' not in request.path:
+                    pass
+        if request.path in ['/','/add'] or request.path.startswith('/vender') or request.path.startswith('/del'):
+            if not session.get('logado'): return redirect('/login')
 
-@app.route("/")
-def home():
-    global buscas
-    if not session.get("logado"):
-        return redirect("/login")
-    busca = request.args.get("q", "").lower()
-    if busca:
-        buscas += 1
-    lista = [n for n in nomes if busca in n.lower()] if busca else nomes
+@app.route('/')
+def index():
+    d=load_data()
+    fat=sum([v['venda'] for v in d['vendas']])
+    luc=sum([v['lucro'] for v in d['vendas']])
+    return render_template_string(DASH_HTML,produtos=d['produtos'],vendas=d['vendas'],faturamento=fat,lucro=luc,total_vendas=len(d['vendas']))
 
-    return f"""
-    <head>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#00ff88">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png">
-    <title>Sistema 5D PRO</title>
-    </head>
-    <body style="font-family:monospace; padding:15px; background:#000; color:#00ff88; max-width:600px; margin:auto">
-    <h1>⚡ SISTEMA 5D v5 PRO <small style="font-size:12px;color:#555">APP</small></h1>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <div style="border:1px solid #0f0;padding:8px 12px;border-radius:5px">Total: {len(nomes)}</div>
-        <div style="border:1px solid #0f0;padding:8px 12px;border-radius:5px">Buscas: {buscas}</div>
-        <div style="border:1px solid #0f0;padding:8px 12px;border-radius:5px">{datetime.now().strftime('%H:%M:%S')}</div>
-    </div><br>
-    <form>
-        <input name="q" value="{busca}" placeholder="Buscar..." style="padding:12px; width:60%; background:#111; color:#0f0; border:1px solid #0f0; border-radius:5px">
-        <button style="padding:12px; background:#0f0; color:#000; border:none; border-radius:5px">BUSCAR</button>
-        <a href="/export" style="padding:12px; background:#111; color:#0f0; border:1px solid #0f0; text-decoration:none; border-radius:5px">CSV</a>
-    </form><br>
-    <form action="/add" method="post">
-        <input name="nome" placeholder="Novo nome" style="padding:12px; width:60%; background:#111; color:#0f0; border:1px solid #0f0; border-radius:5px">
-        <button style="padding:12px; background:#00ff88; color:#000; font-weight:bold; border:none; border-radius:5px">+ ADD</button>
-    </form><hr style="border-color:#0f02a">
-    <p style="color:#555;font-size:12px">Toque em "Instalar" no menu do Chrome para virar APK</p>
-    {"".join([f"<div style='padding:12px; border:1px solid #222; margin:6px 0; background:#0a0a0a; border-radius:8px'> <b>{i+1:02d}</b> - {n} <a href='/del/{nomes.index(n)}' style='color:#f00; float:right; text-decoration:none'>[X]</a></div>" for i,n in enumerate(lista)])}
-    <br><a href="/login" style="color:#555">Sair</a>
-    <script>navigator.serviceWorker&&navigator.serviceWorker.register('/sw.js')</script>
-    </body>
-    """
+@app.route('/loja')
+def loja():
+    d=load_data()
+    return render_template_string(LOJA_HTML,produtos=d['produtos'])
 
-@app.route("/add", methods=["POST"])
+@app.route('/add',methods=['POST'])
 def add():
-    novo = request.form.get("nome","").strip()
-    if novo:
-        nomes.append(novo)
-        salvar()
-    return redirect("/")
+    d=load_data()
+    nid=max([p['id'] for p in d['produtos']],default=0)+1
+    d['produtos'].append({"id":nid,"nome":request.form.get('nome'),"estoque":10,"compra":int(request.form.get('compra')), "venda":int(request.form.get('venda'))})
+    save_data(d); return redirect('/')
 
-@app.route("/del/<int:idx>")
-def delete(idx):
-    if 0 <= idx < len(nomes):
-        nomes.pop(idx)
-        salvar()
-    return redirect("/")
+@app.route('/vender/<int:pid>',methods=['POST'])
+def vender(pid):
+    d=load_data()
+    for p in d['produtos']:
+        if p['id']==pid and p['estoque']>0:
+            p['estoque']-=1
+            d['vendas'].append({"produto":p['nome'],"venda":p['venda'],"lucro":p['venda']-p['compra'],"data":datetime.now().strftime("%d/%m %H:%M")})
+    save_data(d); return redirect('/')
 
-@app.route("/export")
-def export():
-    with open("nomes.csv","w",newline="") as f:
-        w=csv.writer(f)
-        w.writerow(["id","nome"])
-        for i,n in enumerate(nomes):
-            w.writerow([i+1,n])
-    return redirect("/")
+@app.route('/del/<int:pid>',methods=['POST'])
+def delete(pid):
+    d=load_data()
+    d['produtos']=[p for p in d['produtos'] if p['id']!=pid]
+    save_data(d); return redirect('/')
 
-if __name__ == "__main__":
-    print("PRO rodando em http://127.0.0.1:5000 - Senha: 5d")
-    app.run(host="0.0.0.0", port=5000)
+@app.route('/manifest.json')
+def manifest():
+    return jsonify({"name":"5D PRO MAX","short_name":"5D PRO","start_url":"/","display":"standalone","background_color":"#000","theme_color":"#7c3aed"})
+
+if __name__=='__main__':
+    port=int(os.environ.get("PORT",10000))
+    app.run(host='0.0.0.0',port=port)
