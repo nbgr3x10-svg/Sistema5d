@@ -1,15 +1,16 @@
-from flask import Flask, render_template_string, request, redirect, session
-import os, json
+from flask import Flask, render_template_string, request, redirect, session, send_file
+import os, json, mercadopago
 from datetime import datetime
+from fpdf import FPDF
 
 app = Flask(__name__)
 app.secret_key = '5d-ultra-2026'
-USER="admin"
-PASS="5d"
+USER="admin"; PASS="5d"
 PIX="Sofia3x10@gmail.com"
-MP_LINK="https://www.mercadopago.com.br"
-WHATS="5518999999999" # SEU WHATSAPP AQUI
+TOKEN_MERCADOPAGO="SEU_TOKEN_AQUI" # pega em https://www.mercadopago.com.br/developers/panel/app
+WHATS="5518999999999"
 FILE="data.json"
+sdk = mercadopago.SDK(TOKEN_MERCADOPAGO) if TOKEN_MERCADOPAGO.startswith("APP_") else None
 
 def load():
     if os.path.exists(FILE):
@@ -37,48 +38,63 @@ def login():
             session['logado']=True; return redirect('/')
     return '<body style="background:#000;display:flex;justify-content:center;align-items:center;height:100vh"><form method="POST" style="background:#111;padding:32px;border-radius:24px;display:flex;flex-direction:column;gap:12px"><h2 style="color:white;text-align:center">5D</h2><input name="user" placeholder="admin" style="padding:12px;border-radius:12px"><input name="pass" type="password" placeholder="5d" style="padding:12px;border-radius:12px"><button style="background:#7c3aed;color:white;padding:12px;border-radius:12px">ENTRAR</button></form></body>'
 
-@app.route('/logout')
-def logout():
-    session.clear(); return redirect('/login')
-
 @app.route('/')
 def dash():
     if not session.get('logado'): return redirect('/login')
-    d=load(); fat=sum([x.get('total',0) for x in d.get('pedidos',[])])
-    return render_template_string("""<html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-black text-white p-6"><div class="max-w-6xl mx-auto"><div class="flex justify-between"><h1 class="text-2xl font-black">5D ULTRA</h1><a href="/loja" target="_blank" class="bg-white text-black px-4 py-2 rounded-full font-bold">Ver Loja</a></div><div class="grid grid-cols-2 gap-4 mt-6"><div class="bg-violet-600 p-6 rounded-2xl"><p>FAT</p><h2 class="text-3xl font-bold">R$ {{fat}}</h2></div><div class="bg-zinc-900 p-6 rounded-2xl"><p>PEDIDOS</p><h2 class="text-3xl font-bold">{{ped|length}}</h2></div></div><div class="grid md:grid-cols-4 gap-4 mt-8">{% for p in prods %}<div class="bg-zinc-900 rounded-2xl overflow-hidden"><img src="{{p.img}}" class="h-32 w-full object-cover"><div class="p-3"><h3 class="font-bold text-sm">{{p.nome}}</h3><p>R$ {{p.venda}} - Est {{p.estoque}}</p></div></div>{% endfor %}</div><div class="mt-8 bg-zinc-900 p-6 rounded-2xl">{% for v in ped[::-1] %}<p class="border-b border-zinc-800 py-2 text-sm">{{v.produto}} - {{v.nome}} {{v.tel}} - {{v.pagamento}} R$ {{v.total}}</p>{% endfor %}</div></div></body></html>""",prods=d['produtos'],ped=d.get('pedidos',[]),fat=int(fat))
+    d=load()
+    return render_template_string("""
+    <html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head>
+    <body class="bg-black text-white p-6"><div class="max-w-6xl mx-auto">
+    <div class="flex justify-between"><h1 class="font-black text-2xl">5D ULTRA - FAT R$ {{fat}}</h1><a href="/loja" class="bg-white text-black px-4 py-2 rounded-full">Loja</a></div>
+    <div class="mt-6 grid gap-2">{% for p in ped[::-1] %}<div class="bg-zinc-900 p-4 rounded-xl flex justify-between"><span>{{p.produto}} - {{p.nome}} - R$ {{p.total}} ({{p.pagamento}})</span><a href="/nota/{{p.id_nota}}" class="bg-violet-600 px-3 py-1 rounded-full text-xs">Nota PDF</a></div>{% endfor %}</div>
+    </div></body></html>
+    """,ped=d.get('pedidos',[]),fat=sum([x['total'] for x in d.get('pedidos',[]) ]))
 
 @app.route('/loja')
 def loja():
     d=load()
-    return render_template_string("""
-    <html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head>
-    <body class="bg-[#fbfbfd]"><div class="max-w-6xl mx-auto p-6">
-    <header class="flex justify-between items-center"><h1 class="text-2xl font-black">5D STORE</h1><span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs">Atendimento Online</span></header>
-    <h2 class="text-5xl font-black mt-8">Ofertas 5D<br><span class="text-violet-600">Imperdíveis</span></h2>
-    <div class="grid md:grid-cols-4 gap-5 mt-8">{% for p in prods %}<div class="bg-white rounded-[24px] p-5 shadow"><img src="{{p.img}}" class="h-44 w-full object-contain bg-zinc-50 rounded-xl"><h3 class="font-bold mt-3 text-sm">{{p.nome}}</h3><p class="text-xl font-black mt-1">R$ {{p.venda}}</p><p class="text-[11px] text-green-600">12x sem juros</p><a href="/checkout/{{p.id}}" class="block bg-black text-white text-center py-3 rounded-full mt-3 font-bold text-sm">Comprar Agora</a></div>{% endfor %}</div>
-    </div>
-    <!-- ROBÔ WHATSAPP -->
-    <div id="robo" style="position:fixed;bottom:20px;right:20px;z-index:9999"><div id="msg" style="background:white;padding:16px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,0.2);margin-bottom:10px;max-width:260px;font-family:sans-serif;font-size:14px"><b>🤖 Robô 5D:</b> Olá! Vi que gostou do produto. Quer 5% OFF no PIX? Me chama! <span onclick="document.getElementById('msg').style.display='none'" style="float:right;cursor:pointer">x</span></div><a href="https://wa.me/{{whats}}?text=Ola%20quero%20comprar%20na%205D" target="_blank" style="background:#25D366;color:white;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 10px 30px rgba(0,0,0,0.3);text-decoration:none">💬</a></div>
-    <script>setTimeout(()=>{document.getElementById('msg').style.display='block'},3000)</script>
-    </body></html>
-    """,prods=d['produtos'],whats=WHATS)
+    return render_template_string("""<html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-[#fbfbfd]"><div class="max-w-6xl mx-auto p-6"><h1 class="text-3xl font-black">5D STORE</h1><div class="grid md:grid-cols-4 gap-4 mt-6">{% for p in prods %}<div class="bg-white p-4 rounded-2xl shadow"><img src="{{p.img}}" class="h-36 w-full object-contain"><h3 class="font-bold text-sm mt-2">{{p.nome}}</h3><p class="font-black">R$ {{p.venda}}</p><a href="/checkout/{{p.id}}" class="bg-black text-white block text-center py-2 rounded-full mt-2 text-sm">Comprar</a></div>{% endfor %}</div></div>
+    <div style="position:fixed;bottom:20px;right:20px"><a href="https://wa.me/{{w}}?text=Quero%20comprar" style="background:#25D366;color:white;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:28px;text-decoration:none">💬</a></div></body></html>""",prods=d['produtos'],w=WHATS)
 
 @app.route('/checkout/<int:pid>')
 def checkout(pid):
     d=load(); p=next((x for x in d['produtos'] if x['id']==pid),None)
-    return render_template_string("""<html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head>
-    <body class="bg-white"><div class="max-w-4xl mx-auto grid md:grid-cols-2 min-h-screen"><div class="p-8"><h2 class="text-3xl font-black">Checkout Seguro</h2>
-    <form method="POST" class="mt-6 space-y-3"><input name="nome" required placeholder="Nome completo" class="w-full border p-4 rounded-2xl"><div class="grid grid-cols-2 gap-2"><input name="cpf" required placeholder="CPF" class="border p-4 rounded-2xl"><input name="tel" required placeholder="WhatsApp" class="border p-4 rounded-2xl"></div><input name="email" required placeholder="Email" class="w-full border p-4 rounded-2xl"><input name="endereco" required placeholder="Endereço + CEP" class="w-full border p-4 rounded-2xl"><div class="pt-4 space-y-2"><label class="flex justify-between border-2 border-violet-600 p-4 rounded-2xl bg-violet-50"><span>PIX - R$ {{pixv}} - {{pix}}</span><input type="radio" name="pag" value="PIX" checked></label><label class="flex justify-between border p-4 rounded-2xl"><span>Cartão / Boleto</span><input type="radio" name="pag" value="CARTAO"></label></div><button class="w-full bg-black text-white py-4 rounded-full font-bold">Pagar R$ {{p.venda}}</button></form></div><div class="bg-zinc-50 p-8"><img src="{{p.img}}" class="rounded-2xl"><h3 class="font-bold text-xl mt-4">{{p.nome}}</h3><p class="text-3xl font-black">R$ {{p.venda}}</p></div></div></body></html>""",p=p,pix=PIX,pixv=int(p['venda']*0.95))
+    return render_template_string("""<html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-white"><div class="max-w-3xl mx-auto p-6"><h2 class="text-3xl font-black">Pagar {{p.nome}}</h2><form method="POST" class="mt-6 space-y-3"><input name="nome" required placeholder="Nome completo" class="w-full border p-4 rounded-xl"><input name="cpf" required placeholder="CPF" class="w-full border p-4 rounded-xl"><input name="tel" required placeholder="WhatsApp" class="w-full border p-4 rounded-xl"><select name="pag" class="w-full border p-4 rounded-xl"><option value="PIX">PIX 5% OFF R$ {{pixv}}</option><option value="CARTAO">Cartão até 12x R$ {{p.venda}}</option></select><button class="w-full bg-violet-600 text-white py-4 rounded-full font-bold">GERAR PAGAMENTO</button></form></div></body></html>""",p=p,pixv=int(p['venda']*0.95))
 
 @app.route('/checkout/<int:pid>',methods=['POST'])
 def pagar(pid):
     d=load(); p=next((x for x in d['produtos'] if x['id']==pid),None)
-    if p and p['estoque']>0:
-        p['estoque']-=1; tipo=request.form.get('pag'); total=int(p['venda']*0.95) if tipo=='PIX' else p['venda']
-        d.setdefault('pedidos',[]).append({"produto":p['nome'],"total":total,"nome":request.form.get('nome'),"cpf":request.form.get('cpf'),"tel":request.form.get('tel'),"email":request.form.get('email'),"endereco":request.form.get('endereco'),"pagamento":tipo,"data":datetime.now().strftime("%d/%m %H:%M")})
-        save(d)
-        return render_template_string("""<html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-zinc-100 flex items-center justify-center min-h-screen p-6"><div class="bg-white p-8 rounded-3xl max-w-sm w-full text-center"><div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white text-2xl mx-auto">✓</div><h1 class="text-2xl font-black mt-4">Pedido Feito!</h1><p class="text-zinc-500">{{msg}}</p><div class="mt-4 bg-black text-white p-4 rounded-2xl"><p>{{pix}}</p><p class="text-xl font-bold text-green-400">R$ {{total}}</p></div><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{pix}}" class="mx-auto mt-4 rounded-xl"><a href="/loja" class="block mt-4 bg-black text-white py-3 rounded-full font-bold">Voltar</a></div></body></html>""",pix=PIX,total=total,msg="PIX gerado",tipo=tipo)
-    return redirect('/loja')
+    nome=request.form.get('nome'); pag=request.form.get('pag'); total=int(p['venda']*0.95) if pag=='PIX' else p['venda']
+    id_nota=datetime.now().strftime("%Y%m%d%H%M%S")
+    
+    # 1. CRIAR PAGAMENTO NO MP SE TIVER TOKEN
+    link_mp = ""
+    if sdk:
+        pref = sdk.preference().create({"items":[{"title":p['nome'],"quantity":1,"unit_price":float(total)}],"back_urls":{"success":"https://sistema5d.onrender.com/loja"}})
+        link_mp = pref["response"].get("init_point","")
+
+    d.setdefault('pedidos',[]).append({"id_nota":id_nota,"produto":p['nome'],"total":total,"nome":nome,"cpf":request.form.get('cpf'),"tel":request.form.get('tel'),"pagamento":pag,"data":datetime.now().strftime("%d/%m/%Y"),"link_mp":link_mp})
+    if p: p['estoque']-=1
+    save(d)
+
+    return render_template_string("""
+    <html><head><meta name="viewport" content="width=device-width"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-zinc-50 flex justify-center p-6"><div class="bg-white p-8 rounded-3xl max-w-md w-full text-center">
+    <h1 class="text-2xl font-black">Pedido Gerado!</h1>
+    {% if pag=='PIX' %}<p class="mt-2">Pague via PIX para liberar</p><div class="bg-black text-white p-3 rounded-xl mt-3">{{pix}}</div><p class="font-bold text-xl mt-2">R$ {{total}}</p><img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={{pix}}" class="mx-auto mt-3">{% else %}
+    {% if link %}<a href="{{link}}" target="_blank" class="block bg-violet-600 text-white py-4 rounded-full mt-4 font-bold">PAGAR COM CARTÃO NO MP</a>{% else %}<p class="mt-4 text-sm text-zinc-500">Configure seu TOKEN do Mercado Pago no código para ativar cartão automático</p>{% endif %}{% endif %}
+    <a href="/nota/{{id}}" class="block border py-3 rounded-full mt-3 font-bold">Baixar Nota Fiscal</a><a href="/loja" class="block mt-2 text-sm">Voltar pra loja</a></div></body></html>
+    """,pix=PIX,total=total,pag=pag,link=link_mp,id=id_nota)
+
+@app.route('/nota/<id>')
+def nota(id):
+    d=load(); ped=next((x for x in d['pedidos'] if x['id_nota']==id),None)
+    if not ped: return "Nota não encontrada"
+    pdf=FPDF(); pdf.add_page(); pdf.set_font("Arial","B",16); pdf.cell(0,10,"NOTA FISCAL - 5D STORE",ln=True,align='C'); pdf.ln(10)
+    pdf.set_font("Arial","",12)
+    pdf.cell(0,8,f"Nota: {ped['id_nota']}",ln=True); pdf.cell(0,8,f"Data: {ped['data']}",ln=True); pdf.cell(0,8,f"Cliente: {ped['nome']} CPF: {ped['cpf']}",ln=True)
+    pdf.cell(0,8,f"Produto: {ped['produto']}",ln=True); pdf.cell(0,8,f"Total: R$ {ped['total']} - {ped['pagamento']}",ln=True)
+    pdf.ln(10); pdf.cell(0,8,"Obrigado pela compra!",ln=True,align='C')
+    path=f"/tmp/nota_{id}.pdf"; pdf.output(path); return send_file(path,as_attachment=True)
 
 if __name__=='__main__':
     app.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
